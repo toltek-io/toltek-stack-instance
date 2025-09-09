@@ -1,6 +1,6 @@
 # Toltek Data Stack
 
-A modern ELT data stack built on Google Cloud Platform with containerized pipelines, automated orchestration, and multi-environment deployment.
+A modern ELT data stack built on Google Cloud Platform with containerized pipelines and multi-environment deployment.
 
 ## Architecture Overview
 
@@ -17,7 +17,6 @@ A modern ELT data stack built on Google Cloud Platform with containerized pipeli
 **Core Components:**
 - **Extraction**: [dlt](https://dlthub.com/) pipelines for data ingestion from various sources
 - **Transformation**: dbt models for data transformations in BigQuery
-- **Orchestration**: Cloud Scheduler triggers with Cloud Run execution
 - **Infrastructure**: Terraform modules for reproducible GCP resource management
 
 ## Project Structure
@@ -52,8 +51,9 @@ toltek-data-stack/
 - **IAM**: Service accounts with principle of least privilege
 
 **Multi-Environment Setup:**
-- **Development** (`-dev`): Testing and development workflows
-- **Production** (`-prd`): Live data processing and analytics
+- **Datalake Development** (`-dev`): Development data ingestion and processing
+- **Datalake Production** (`-prd`): Production data ingestion and processing  
+- **Data Warehouse** (`toltek-dwh-prd`): Centralized BigQuery for dbt transformations and analytics
 
 **Resource Naming Convention:**
 - Development: `toltek-{resource}-dev`
@@ -61,10 +61,10 @@ toltek-data-stack/
 
 ## Data Pipeline Flow
 
-1. **Ingestion**: dlt pipelines extract data from configured sources
-2. **Loading**: Raw data loaded into BigQuery staging datasets
-3. **Transformation**: dbt models create cleaned and aggregated data marts
-4. **Orchestration**: Cloud Scheduler triggers pipeline runs via Cloud Run
+1. **Ingestion**: dlt pipelines extract data from configured sources in datalake projects
+2. **Loading**: Raw data loaded into BigQuery datasets in respective datalake environments
+3. **Cross-project Transfer**: Data transferred from datalake to central warehouse project
+4. **Transformation**: dbt models in warehouse project create cleaned and aggregated data marts
 5. **Monitoring**: Built-in logging and alerting for pipeline health
 
 ## Code Organization
