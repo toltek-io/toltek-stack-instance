@@ -3,8 +3,8 @@
 
 # Environment Variables
 CLIENT_SLUG := toltek
-DATALAKE_PROJECT_ID_DEV := toltek-datalake-prd
-DATALAKE_PROJECT_ID_PRD := toltek-datalake-dev
+DATALAKE_PROJECT_ID_DEV := toltek-datalake-dev
+DATALAKE_PROJECT_ID_PRD := toltek-datalake-prd
 DATAWAREHOUSE_PROJECT_ID := toltek-dwh-prd
 REGION := 
 ENV ?= dev
