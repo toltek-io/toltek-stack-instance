@@ -86,3 +86,4 @@ htmlcov/
 
 # Other files
 assets/*
+.copier-answers.yml
