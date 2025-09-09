@@ -1,0 +1,25 @@
+data_stack:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      project: "{{ env_var('DATAWAREHOUSE_PROJECT_ID') }}"
+      dataset: "{{ env_var('BIGQUERY_DATASET_PREFIX') }}_{{ env_var('ENVIRONMENT', 'dev') }}"
+      location: "EU"
+      keyfile: "{{ env_var('GCP_SERVICE_ACCOUNT_KEY_DEV', './keys/service-account-dev.json') }}"
+      threads: 4
+      timeout_seconds: 300
+      priority: interactive
+      retries: 1
+    prd:
+      type: bigquery
+      method: service-account
+      project: "{{ env_var('DATAWAREHOUSE_PROJECT_ID') }}"
+      dataset: "{{ env_var('BIGQUERY_DATASET_PREFIX') }}_{{ env_var('ENVIRONMENT', 'prd') }}"
+      location: "EU"
+      keyfile: "{{ env_var('GCP_SERVICE_ACCOUNT_KEY_PRD', './keys/service-account-prd.json') }}"
+      threads: 8
+      timeout_seconds: 600
+      priority: batch
+      retries: 3 

@@ -1,0 +1,119 @@
+name: Deploy Cloud Run Jobs
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'infrastructure/**'
+      - 'src/toltek/**'
+      - '.github/workflows/deploy-cloud-run-jobs.yml'
+  push:
+    branches: [ main, dev, copier-update ]
+
+env:
+  REGION: ${{ vars.GCP_REGION }}
+  DATALAKE_PROJECT_ID_DEV: ${{ vars.DATALAKE_PROJECT_ID_DEV }}
+  DATALAKE_PROJECT_ID_PRD: ${{ vars.DATALAKE_PROJECT_ID_PRD }}
+  DATAWAREHOUSE_PROJECT_ID: ${{ vars.DATAWAREHOUSE_PROJECT_ID }}
+  CLIENT_SLUG: ${{ vars.CLIENT_SLUG }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.repository != 'toltek-io/toltek-stack-template'
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+    steps:
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set environment variables based on branch
+      - name: Set environment variables
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "ENVIRONMENT=prd" >> $GITHUB_ENV
+            echo "DATALAKE_PROJECT_ID=${{ env.DATALAKE_PROJECT_ID_PRD }}" >> $GITHUB_ENV
+            echo "JOB_NAME=${{ env.CLIENT_SLUG }}-extraction-prd" >> $GITHUB_ENV
+            echo "MEMORY=1Gi" >> $GITHUB_ENV
+            echo "CPU=2" >> $GITHUB_ENV
+            echo "MAX_INSTANCES=10" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=dev" >> $GITHUB_ENV
+            echo "DATALAKE_PROJECT_ID=${{ env.DATALAKE_PROJECT_ID_DEV }}" >> $GITHUB_ENV
+            echo "JOB_NAME=${{ env.CLIENT_SLUG }}-extraction-dev" >> $GITHUB_ENV
+            echo "MEMORY=512Mi" >> $GITHUB_ENV
+            echo "CPU=1" >> $GITHUB_ENV
+            echo "MAX_INSTANCES=5" >> $GITHUB_ENV
+          fi
+
+      # Set up Python environment for any build requirements
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # Authenticate with Google Cloud using service account
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ env.ENVIRONMENT == 'prd' && secrets.GCP_SERVICE_ACCOUNT_KEY_PRD || secrets.GCP_SERVICE_ACCOUNT_KEY_DEV }}
+
+      # Set up Google Cloud SDK for deployment commands
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Configure gcloud for the target project and region
+      - name: Configure gcloud
+        run: |
+          gcloud config set project ${{ env.DATALAKE_PROJECT_ID }}
+          gcloud config set run/region ${{ env.REGION }}
+
+      # Display which GCP project will be used for deployment
+      - name: Show deployment target
+        run: |
+          echo "Deploying to: ${{ env.ENVIRONMENT }} environment"
+          echo "Datalake Project: ${{ env.DATALAKE_PROJECT_ID }}"
+          echo "Region: ${{ env.REGION }}"
+          echo "Job: ${{ env.JOB_NAME }}"
+
+      # Configure Docker authentication for Google Artifact Registry
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # Build Docker image
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=${{ env.REGION }}-docker.pkg.dev/${{ env.DATALAKE_PROJECT_ID }}/docker-repo/${{ env.CLIENT_SLUG }}-extraction:${{ github.sha }}
+          docker build -t $IMAGE_TAG -f infrastructure/docker/Dockerfile .
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      # Push the built Docker image to Artifact Registry
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.IMAGE_TAG }}
+
+      # Deploy Cloud Run Jobs (assumes infrastructure already exists)
+      - name: Deploy Extraction Job
+        run: |
+          gcloud run jobs deploy ${{ env.CLIENT_SLUG }}-extraction-${{ env.ENVIRONMENT }} \
+            --image ${{ env.IMAGE_TAG }} \
+            --region=${{ env.REGION }} \
+            --service-account=${{ env.CLIENT_SLUG }}-${{ env.ENVIRONMENT }}@${{ env.DATALAKE_PROJECT_ID }}.iam.gserviceaccount.com \
+            --memory=${{ env.MEMORY }} \
+            --cpu=${{ env.CPU }} \
+            --max-retries=3 \
+            --parallelism=1 \
+            --task-count=1 \
+            --set-env-vars="ENVIRONMENT=${{ env.ENVIRONMENT }}" \
+            --set-env-vars="DATALAKE_PROJECT_ID=${{ env.DATALAKE_PROJECT_ID }}" \
+            --set-env-vars="DATAWAREHOUSE_PROJECT_ID=${{ env.DATAWAREHOUSE_PROJECT_ID }}" \
+            --set-env-vars="GOOGLE_CLOUD_PROJECT=${{ env.DATALAKE_PROJECT_ID }}" \
+            --set-env-vars="SOURCES__WEATHER_API__API_KEY=${{ secrets.WEATHER_API_KEY }}" \
+            --set-env-vars="SOURCES__GOOGLE_SHEETS__CREDENTIALS_PATH=/tmp/google-sheets-creds.json" \
+            --args="extraction"
+
+      # Note: Transformation is now handled by dbt Cloud, not Cloud Run
+      # Cloud Schedulers should be created manually to trigger extraction jobs
+      # This simplifies the template and allows for flexible scheduling configuration
